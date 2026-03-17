@@ -283,7 +283,10 @@ export function usePiSDK(): UsePiSDKReturn {
     };
 
     script.onerror = () => {
-      console.error("[Pi SDK] Failed to load SDK script");
+      // This is expected when not running in Pi Browser
+      // The Pi SDK can only be loaded within the Pi Browser environment
+      console.warn("[Pi SDK] SDK not available - this app must be opened in Pi Browser");
+      setIsSDKLoaded(false);
     };
 
     document.head.appendChild(script);

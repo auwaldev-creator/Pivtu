@@ -1,7 +1,8 @@
 import { NextResponse } from "next/server";
+import { requireAuth } from "@/lib/auth-middleware";
 
 // ============================================================================
-// MOCK VTU API - PiRC Service Payment Compliance
+// VTU API - PiRC Service Payment Compliance
 // Simulates VTU data delivery with PiRC-aligned response structure
 // ============================================================================
 
@@ -53,6 +54,10 @@ const dataPlanPricesNaira: Record<string, number> = {
 };
 
 export async function POST(request: Request) {
+  // Check authentication
+  const authError = await requireAuth();
+  if (authError) return authError;
+
   try {
     const body: VTUDeliveryRequest = await request.json();
 
@@ -98,7 +103,7 @@ export async function POST(request: Request) {
         payment_id,
         txid,
         amount: amount_pi,
-        explorer_link: `https://piblockexplorer.com/tx/${txid}`,
+        explorer_link: `https://blockexplorer.minepi.com/testnet/tx/${txid}`,
       },
       // PiRC Service Payment Metadata
       pirc_metadata: {

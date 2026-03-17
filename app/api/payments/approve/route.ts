@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { requireAuth } from "@/lib/auth-middleware";
 
 // Pi Platform API Configuration
 const PI_API_KEY = process.env.PI_API_KEY || "";
@@ -55,6 +56,10 @@ const platformAPIClient = {
  * 4. Call Pi API to approve the payment
  */
 export async function POST(request: Request) {
+  // Check authentication
+  const authError = await requireAuth();
+  if (authError) return authError;
+
   try {
     const { paymentId } = await request.json();
 

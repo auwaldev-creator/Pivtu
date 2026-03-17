@@ -30,7 +30,7 @@ export function Header({ onMenuClick }: HeaderProps) {
           </div>
           <div>
             <h1 className="text-lg font-bold tracking-tight text-foreground">
-              Data Hub
+              Pivtu
             </h1>
             <p className="text-[10px] font-medium text-primary">on Pi Network</p>
           </div>

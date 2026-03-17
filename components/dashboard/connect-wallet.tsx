@@ -23,7 +23,7 @@ export function ConnectWallet({ isSDKLoaded, isConnecting, onConnect }: ConnectW
       </div>
 
       {/* App Name */}
-      <h1 className="mb-2 text-3xl font-bold text-foreground">Data Hub</h1>
+      <h1 className="mb-2 text-3xl font-bold text-foreground">Pivtu</h1>
       <p className="mb-8 text-center text-muted-foreground">
         Buy data bundles instantly with Pi
       </p>
@@ -88,7 +88,7 @@ export function ConnectWallet({ isSDKLoaded, isConnecting, onConnect }: ConnectW
           )}
         />
         <span className="text-xs text-muted-foreground">
-          {isSDKLoaded ? "Pi SDK Ready (Sandbox)" : "Initializing Pi SDK..."}
+          {isSDKLoaded ? "Pi SDK Ready" : "Initializing Pi SDK..."}
         </span>
       </div>
 
@@ -99,11 +99,6 @@ export function ConnectWallet({ isSDKLoaded, isConnecting, onConnect }: ConnectW
           Verified by Pi Network KYC. No additional registration required.
         </p>
       </div>
-
-      {/* Footer */}
-      <p className="mt-8 text-[10px] text-muted-foreground/70">
-        Testnet Environment - For Development Only
-      </p>
     </div>
   );
 }

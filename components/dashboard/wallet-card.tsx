@@ -1,6 +1,6 @@
 "use client";
 
-import { Wallet, TrendingUp, RefreshCw } from "lucide-react";
+import { Wallet, RefreshCw, ExternalLink } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 interface WalletCardProps {
@@ -50,21 +50,26 @@ export function WalletCard({
 
         {/* Balance */}
         <div className="mt-6">
-          <p className="text-sm font-medium text-white/70">Wallet Balance</p>
+          <p className="text-sm font-medium text-white/70">Pi Testnet Balance</p>
           <div className="mt-1 flex items-baseline gap-2">
             <span className="text-4xl font-bold tracking-tight text-white">
-              {balance.toFixed(2)}
+              {balance.toFixed(4)}
             </span>
             <span className="text-xl font-semibold text-white/80">Pi</span>
           </div>
         </div>
 
-        {/* Stats row */}
+        {/* BlockExplorer Link */}
         <div className="mt-6 flex items-center gap-2 rounded-xl bg-white/10 px-4 py-3 backdrop-blur-sm">
-          <TrendingUp className="h-4 w-4 text-success" />
-          <span className="text-sm font-medium text-white">
-            +12.5% from last month
-          </span>
+          <ExternalLink className="h-4 w-4 text-white/80" />
+          <a 
+            href="https://blockexplorer.minepi.com/testnet/"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-sm font-medium text-white hover:underline"
+          >
+            View on Pi BlockExplorer
+          </a>
         </div>
       </div>
     </div>

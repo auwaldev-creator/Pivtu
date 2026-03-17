@@ -1,18 +1,17 @@
 import { NextResponse } from "next/server";
+import { destroySession } from "@/lib/session";
 
 /**
  * GET /api/user/signout
  * 
- * Sign out user - Following Pi Demo App pattern
- * 
- * In production, you should destroy the session.
+ * Sign out user - Destroys the session cookie
  */
 export async function GET() {
   try {
     console.log("[User API] User signed out");
 
-    // TODO: In production, destroy session
-    // req.session.destroy();
+    // Destroy the session
+    await destroySession();
 
     return NextResponse.json({
       message: "User signed out successfully",

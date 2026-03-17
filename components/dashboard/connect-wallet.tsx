@@ -1,6 +1,6 @@
 "use client";
 
-import { Wallet, Shield, Loader2, CheckCircle2, AlertCircle } from "lucide-react";
+import { Wallet, Shield, Loader2, CheckCircle2, AlertCircle, Zap } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useState, useEffect } from "react";
 
@@ -13,13 +13,13 @@ interface ConnectWalletProps {
 export function ConnectWallet({ isSDKLoaded, isConnecting, onConnect }: ConnectWalletProps) {
   const [sdkLoadTimeout, setSdkLoadTimeout] = useState(false);
 
-  // Show "not in Pi Browser" message after 5 seconds if SDK hasn't loaded
+  // Show "not in Pi Browser" message after 8 seconds if SDK hasn't loaded
   useEffect(() => {
     const timer = setTimeout(() => {
       if (!isSDKLoaded) {
         setSdkLoadTimeout(true);
       }
-    }, 5000);
+    }, 8000);
 
     if (isSDKLoaded) {
       setSdkLoadTimeout(false);
@@ -49,7 +49,7 @@ export function ConnectWallet({ isSDKLoaded, isConnecting, onConnect }: ConnectW
       {/* Features */}
       <div className="mb-10 space-y-4 w-full max-w-xs">
         {[
-          { icon: Wallet, text: "Instant data recharge" },
+          { icon: Zap, text: "Instant data recharge" },
           { icon: Shield, text: "Secured by Pi Network" },
           { icon: CheckCircle2, text: "No registration needed" },
         ].map(({ icon: Icon, text }) => (
@@ -81,7 +81,7 @@ export function ConnectWallet({ isSDKLoaded, isConnecting, onConnect }: ConnectW
           {!isSDKLoaded ? (
             <>
               <Loader2 className="h-6 w-6 animate-spin" />
-              <span className="text-lg">Connecting...</span>
+              <span className="text-lg">Loading...</span>
             </>
           ) : isConnecting ? (
             <>
@@ -99,11 +99,11 @@ export function ConnectWallet({ isSDKLoaded, isConnecting, onConnect }: ConnectW
 
       {/* Pi Browser Required Notice */}
       {sdkLoadTimeout && !isSDKLoaded && (
-        <div className="mt-6 w-full max-w-xs rounded-xl border border-warning/30 bg-warning/10 p-4">
+        <div className="mt-6 w-full max-w-xs rounded-xl border border-[#F59E0B]/30 bg-[#F59E0B]/10 p-4">
           <div className="flex items-start gap-3">
-            <AlertCircle className="mt-0.5 h-5 w-5 shrink-0 text-warning" />
+            <AlertCircle className="mt-0.5 h-5 w-5 shrink-0 text-[#F59E0B]" />
             <div>
-              <p className="text-sm font-medium text-warning">Open in Pi Browser</p>
+              <p className="text-sm font-medium text-[#F59E0B]">Open in Pi Browser</p>
               <p className="mt-1 text-xs text-muted-foreground">
                 This app requires the Pi Browser to connect your wallet. Please open this page in the Pi Browser app.
               </p>
@@ -112,11 +112,11 @@ export function ConnectWallet({ isSDKLoaded, isConnecting, onConnect }: ConnectW
         </div>
       )}
 
-      {/* KYC Notice */}
+      {/* Security Notice */}
       <div className="mt-8 flex items-center gap-2 rounded-xl bg-success/10 px-4 py-3">
         <Shield className="h-4 w-4 shrink-0 text-success" />
         <p className="text-xs text-success">
-          Verified by Pi Network KYC. No additional registration required.
+          Secured by Pi Network. Your wallet, your control.
         </p>
       </div>
     </div>

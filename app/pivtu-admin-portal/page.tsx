@@ -16,12 +16,13 @@ import {
   Users,
   Wallet,
   TrendingUp,
-  AlertTriangle,
   ChevronDown,
   Lock,
   ShieldAlert,
   Eye,
   EyeOff,
+  DollarSign,
+  Save,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
@@ -34,10 +35,6 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { usePiSDK } from "@/hooks/use-pi-sdk";
-
-// Admin wallet address - only this address can access admin panel
-const ADMIN_WALLET_ADDRESS = "GAIEJAHECAU4IR3QZ2KPCDJDL5WGLBWZRF4QQ4RTTZ5AIVQ74SVFHEU5";
 
 // Types
 interface Order {
@@ -114,19 +111,6 @@ const initialOrders: Order[] = [
     completed_at: new Date(Date.now() - 86300000).toISOString(),
     delivery_id: "VTU_1710000004_QRS567",
   },
-  {
-    id: "order_005",
-    user_uid: "user_pi_efg890hij123klm456nop789qrs012tuv345wxy678zab901",
-    username: "PiNetwork_Fan",
-    amount_pi: 0.9,
-    phone_number: "09055556666",
-    network_provider: "MTN",
-    data_plan: "1GB",
-    status: "failed",
-    txid: "efg890hij123efg890hij123efg890hij123efg890hij123efg890hij123efg8",
-    payment_id: "pay_efg890",
-    created_at: new Date(Date.now() - 172800000).toISOString(),
-  },
 ];
 
 // Stats Card Component
@@ -182,7 +166,7 @@ function StatsCard({
   );
 }
 
-// Admin Login Component
+// Admin Login Component (Password Only)
 function AdminLogin({
   onLogin,
   error,
@@ -272,51 +256,7 @@ function AdminLogin({
   );
 }
 
-// Access Denied Component
-function AccessDenied({ walletAddress }: { walletAddress?: string | null }) {
-  return (
-    <div className="flex min-h-screen flex-col items-center justify-center bg-background px-6">
-      <div className="w-full max-w-sm text-center">
-        <div className="mb-8 flex justify-center">
-          <div className="flex h-20 w-20 items-center justify-center rounded-full bg-destructive/10">
-            <ShieldAlert className="h-10 w-10 text-destructive" />
-          </div>
-        </div>
-
-        <h1 className="mb-2 text-2xl font-bold text-foreground">
-          Access Denied
-        </h1>
-        <p className="mb-4 text-sm text-muted-foreground">
-          Your wallet address is not authorized to access the admin panel.
-        </p>
-
-        {walletAddress && (
-          <div className="mb-6 rounded-xl bg-card p-4">
-            <p className="text-xs text-muted-foreground">Your wallet:</p>
-            <p className="mt-1 font-mono text-xs text-foreground break-all">
-              {walletAddress}
-            </p>
-          </div>
-        )}
-
-        <Link
-          href="/"
-          className={cn(
-            "inline-flex w-full items-center justify-center gap-2 rounded-xl bg-primary py-3 font-semibold text-primary-foreground transition-colors",
-            "hover:bg-primary/90"
-          )}
-        >
-          <ArrowLeft className="h-4 w-4" />
-          Back to Dashboard
-        </Link>
-      </div>
-    </div>
-  );
-}
-
 export default function AdminDashboard() {
-  const { isAuthenticated, walletAddress } = usePiSDK();
-  
   const [isAdminAuthenticated, setIsAdminAuthenticated] = useState(false);
   const [authError, setAuthError] = useState<string | null>(null);
   const [isAuthenticating, setIsAuthenticating] = useState(false);
@@ -329,11 +269,21 @@ export default function AdminDashboard() {
   >("all");
   const [copied, setCopied] = useState<string | null>(null);
   const [showFilters, setShowFilters] = useState(false);
+  
+  // VTU Balance Management
+  const [vtuNairaBalance, setVtuNairaBalance] = useState("10000.00");
+  const [vtuBalanceInput, setVtuBalanceInput] = useState("10000.00");
+  const [isBalanceSaved, setIsBalanceSaved] = useState(true);
 
-  // Check if user's wallet matches admin wallet
-  const isAdminWallet = walletAddress === ADMIN_WALLET_ADDRESS;
+  // Check for existing session on mount
+  useEffect(() => {
+    const adminSession = sessionStorage.getItem("pivtu_admin_session");
+    if (adminSession) {
+      setIsAdminAuthenticated(true);
+    }
+  }, []);
 
-  // Handle admin login
+  // Handle admin login (password only)
   const handleAdminLogin = async (password: string) => {
     setIsAuthenticating(true);
     setAuthError(null);
@@ -342,18 +292,20 @@ export default function AdminDashboard() {
       const response = await fetch("/api/admin/auth", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ password, walletAddress }),
+        body: JSON.stringify({ password }),
       });
 
       const data = await response.json();
 
       if (response.ok && data.success) {
         setIsAdminAuthenticated(true);
+        // Store session
+        sessionStorage.setItem("pivtu_admin_session", "true");
         // Load orders after successful auth
         setIsLoading(true);
         setTimeout(() => setIsLoading(false), 1000);
       } else {
-        setAuthError(data.error || "Authentication failed");
+        setAuthError(data.error || "Invalid password");
       }
     } catch (error) {
       console.error("[Admin] Login error:", error);
@@ -363,12 +315,7 @@ export default function AdminDashboard() {
     }
   };
 
-  // Show access denied if wallet doesn't match
-  if (!isAdminWallet) {
-    return <AccessDenied walletAddress={walletAddress} />;
-  }
-
-  // Show login screen if not admin authenticated
+  // Show login screen if not authenticated
   if (!isAdminAuthenticated) {
     return (
       <AdminLogin
@@ -448,6 +395,17 @@ export default function AdminDashboard() {
       hour: "2-digit",
       minute: "2-digit",
     });
+  };
+
+  // Save VTU Balance
+  const saveVtuBalance = () => {
+    const parsed = parseFloat(vtuBalanceInput);
+    if (!isNaN(parsed) && parsed >= 0) {
+      setVtuNairaBalance(parsed.toFixed(2));
+      setIsBalanceSaved(true);
+      // In production, save to backend
+      console.log("[Admin] VTU Balance updated to:", parsed.toFixed(2));
+    }
   };
 
   // Export orders as CSV
@@ -555,7 +513,7 @@ export default function AdminDashboard() {
                 Admin Dashboard
               </h1>
               <p className="text-xs text-muted-foreground">
-                Manage incoming orders
+                Manage orders & VTU balance
               </p>
             </div>
           </div>
@@ -585,6 +543,67 @@ export default function AdminDashboard() {
       </header>
 
       <main className="p-4">
+        {/* VTU Balance Management */}
+        <section className="mb-6">
+          <div className="rounded-xl bg-gradient-to-br from-success/20 to-success/5 border border-success/30 p-5">
+            <div className="flex items-center gap-2 mb-4">
+              <DollarSign className="h-5 w-5 text-success" />
+              <h2 className="text-base font-semibold text-foreground">
+                VTU API Balance
+              </h2>
+            </div>
+            
+            <div className="flex items-center gap-3">
+              <div className="flex-1">
+                <label className="text-xs text-muted-foreground mb-1 block">
+                  Naira Liquidity (NGN)
+                </label>
+                <div className="flex items-center gap-2">
+                  <span className="text-lg font-bold text-success">NGN</span>
+                  <input
+                    type="number"
+                    value={vtuBalanceInput}
+                    onChange={(e) => {
+                      setVtuBalanceInput(e.target.value);
+                      setIsBalanceSaved(false);
+                    }}
+                    className="h-12 flex-1 rounded-xl bg-background/50 px-4 text-xl font-bold text-foreground focus:outline-none focus:ring-2 focus:ring-success"
+                    placeholder="0.00"
+                    min="0"
+                    step="0.01"
+                  />
+                </div>
+              </div>
+              <button
+                onClick={saveVtuBalance}
+                disabled={isBalanceSaved}
+                className={cn(
+                  "flex h-12 items-center gap-2 rounded-xl px-4 font-medium transition-colors",
+                  isBalanceSaved
+                    ? "bg-success/20 text-success cursor-default"
+                    : "bg-success text-success-foreground hover:bg-success/90"
+                )}
+              >
+                {isBalanceSaved ? (
+                  <>
+                    <CheckCircle2 className="h-5 w-5" />
+                    Saved
+                  </>
+                ) : (
+                  <>
+                    <Save className="h-5 w-5" />
+                    Save
+                  </>
+                )}
+              </button>
+            </div>
+            
+            <p className="mt-3 text-xs text-muted-foreground">
+              Enter your VTU provider API balance to monitor liquidity. This is for tracking purposes only.
+            </p>
+          </div>
+        </section>
+
         {/* Stats Grid */}
         <section className="mb-6 grid grid-cols-2 gap-3 lg:grid-cols-4">
           <StatsCard
@@ -653,7 +672,7 @@ export default function AdminDashboard() {
             </div>
           </div>
 
-          {/* Filter Pills */}
+          {/* Filter Options */}
           {showFilters && (
             <div className="mt-3 flex flex-wrap gap-2">
               {(["all", "pending", "completed", "failed"] as const).map(
@@ -662,24 +681,13 @@ export default function AdminDashboard() {
                     key={status}
                     onClick={() => setFilterStatus(status)}
                     className={cn(
-                      "rounded-full px-4 py-1.5 text-xs font-medium capitalize transition-colors",
+                      "rounded-lg px-3 py-1.5 text-xs font-medium transition-colors",
                       filterStatus === status
                         ? "bg-primary text-primary-foreground"
                         : "bg-card text-foreground hover:bg-secondary"
                     )}
                   >
-                    {status}
-                    {status !== "all" && (
-                      <span className="ml-1.5 opacity-70">
-                        (
-                        {
-                          orders.filter((o) =>
-                            status === "all" ? true : o.status === status
-                          ).length
-                        }
-                        )
-                      </span>
-                    )}
+                    {status.charAt(0).toUpperCase() + status.slice(1)}
                   </button>
                 )
               )}
@@ -687,172 +695,99 @@ export default function AdminDashboard() {
           )}
         </section>
 
-        {/* Pending Alert */}
-        {pendingOrders > 0 && (
-          <section className="mb-4">
-            <div className="flex items-center gap-3 rounded-xl bg-[#F59E0B]/10 border border-[#F59E0B]/30 p-4">
-              <AlertTriangle className="h-5 w-5 shrink-0 text-[#F59E0B]" />
-              <div className="flex-1">
-                <p className="text-sm font-medium text-foreground">
-                  {pendingOrders} Pending Order{pendingOrders > 1 ? "s" : ""}
-                </p>
-                <p className="text-xs text-muted-foreground">
-                  Mark as completed after manually delivering data or integrating
-                  with VTU API.
-                </p>
-              </div>
-            </div>
-          </section>
-        )}
-
         {/* Orders Table */}
-        <section className="rounded-2xl bg-card overflow-hidden">
+        <section className="rounded-xl bg-card overflow-hidden">
           {isLoading ? (
             <div className="flex items-center justify-center p-20">
               <RefreshCw className="h-8 w-8 animate-spin text-primary" />
             </div>
           ) : filteredOrders.length === 0 ? (
             <div className="flex flex-col items-center justify-center p-20 text-center">
-              <Search className="mb-3 h-10 w-10 text-muted-foreground/50" />
+              <Search className="mb-4 h-12 w-12 text-muted-foreground/30" />
               <p className="text-sm text-muted-foreground">No orders found</p>
-              <p className="mt-1 text-xs text-muted-foreground/70">
-                Try adjusting your search or filters
-              </p>
             </div>
           ) : (
             <div className="overflow-x-auto">
               <Table>
                 <TableHeader>
-                  <TableRow className="border-b border-border hover:bg-transparent">
-                    <TableHead className="text-xs text-muted-foreground">
-                      User
-                    </TableHead>
-                    <TableHead className="text-xs text-muted-foreground">
-                      Amount
-                    </TableHead>
-                    <TableHead className="text-xs text-muted-foreground">
-                      Phone
-                    </TableHead>
-                    <TableHead className="text-xs text-muted-foreground">
-                      Network
-                    </TableHead>
-                    <TableHead className="text-xs text-muted-foreground">
-                      Plan
-                    </TableHead>
-                    <TableHead className="text-xs text-muted-foreground">
-                      Status
-                    </TableHead>
-                    <TableHead className="text-xs text-muted-foreground">
-                      Date
-                    </TableHead>
-                    <TableHead className="text-xs text-muted-foreground text-right">
-                      Actions
-                    </TableHead>
+                  <TableRow>
+                    <TableHead>Order</TableHead>
+                    <TableHead>User</TableHead>
+                    <TableHead>Amount</TableHead>
+                    <TableHead>Network</TableHead>
+                    <TableHead>Status</TableHead>
+                    <TableHead>Date</TableHead>
+                    <TableHead>Actions</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {filteredOrders.map((order) => (
-                    <TableRow
-                      key={order.id}
-                      className="border-b border-border/50 hover:bg-secondary/30"
-                    >
-                      {/* User */}
+                    <TableRow key={order.id}>
                       <TableCell>
-                        <div className="flex flex-col">
-                          <span className="text-sm font-medium text-foreground">
-                            @{order.username}
-                          </span>
-                          <button
-                            onClick={() =>
-                              copyToClipboard(order.user_uid, `uid_${order.id}`)
-                            }
-                            className="flex items-center gap-1 text-[10px] text-muted-foreground hover:text-foreground"
-                          >
-                            <span className="font-mono">
-                              {formatUid(order.user_uid)}
-                            </span>
-                            <Copy className="h-2.5 w-2.5" />
-                            {copied === `uid_${order.id}` && (
-                              <span className="text-success">Copied!</span>
-                            )}
-                          </button>
+                        <div>
+                          <p className="font-medium text-foreground">
+                            {order.data_plan}
+                          </p>
+                          <p className="text-xs text-muted-foreground">
+                            {order.phone_number}
+                          </p>
                         </div>
                       </TableCell>
-
-                      {/* Amount */}
                       <TableCell>
-                        <span className="text-sm font-semibold text-primary">
+                        <div>
+                          <p className="font-medium text-foreground">
+                            @{order.username}
+                          </p>
+                          <p className="font-mono text-xs text-muted-foreground">
+                            {formatUid(order.user_uid)}
+                          </p>
+                        </div>
+                      </TableCell>
+                      <TableCell>
+                        <span className="font-semibold text-primary">
                           {order.amount_pi.toFixed(2)} Pi
                         </span>
                       </TableCell>
-
-                      {/* Phone */}
-                      <TableCell>
-                        <span className="font-mono text-sm text-foreground">
-                          {order.phone_number}
-                        </span>
-                      </TableCell>
-
-                      {/* Network */}
                       <TableCell>
                         <Badge
                           className={cn(
-                            "text-xs font-medium",
+                            "border",
                             getNetworkColor(order.network_provider)
                           )}
                         >
                           {order.network_provider}
                         </Badge>
                       </TableCell>
-
-                      {/* Plan */}
-                      <TableCell>
-                        <span className="text-sm text-foreground">
-                          {order.data_plan}
-                        </span>
-                      </TableCell>
-
-                      {/* Status with Toggle */}
-                      <TableCell>
-                        <div className="flex items-center gap-2">
-                          {getStatusBadge(order.status)}
-                          {order.status !== "failed" && (
-                            <Switch
-                              checked={order.status === "completed"}
-                              onCheckedChange={() => toggleOrderStatus(order.id)}
-                              className="data-[state=checked]:bg-success"
-                            />
-                          )}
-                        </div>
-                      </TableCell>
-
-                      {/* Date */}
+                      <TableCell>{getStatusBadge(order.status)}</TableCell>
                       <TableCell>
                         <span className="text-xs text-muted-foreground">
                           {formatDate(order.created_at)}
                         </span>
                       </TableCell>
-
-                      {/* Actions */}
-                      <TableCell className="text-right">
-                        <div className="flex items-center justify-end gap-1">
+                      <TableCell>
+                        <div className="flex items-center gap-2">
+                          <Switch
+                            checked={order.status === "completed"}
+                            onCheckedChange={() => toggleOrderStatus(order.id)}
+                            disabled={order.status === "failed"}
+                          />
                           <button
                             onClick={() =>
-                              copyToClipboard(order.txid, `txid_${order.id}`)
+                              copyToClipboard(order.txid, order.id)
                             }
-                            className="flex h-8 w-8 items-center justify-center rounded-lg bg-secondary/50 transition-colors hover:bg-secondary"
+                            className="rounded-lg p-1.5 text-muted-foreground hover:bg-secondary hover:text-foreground"
                             title="Copy TXID"
                           >
-                            <Copy className="h-3.5 w-3.5 text-muted-foreground" />
+                            <Copy className="h-4 w-4" />
                           </button>
                           <a
                             href={getExplorerUrl(order.txid)}
                             target="_blank"
                             rel="noopener noreferrer"
-                            className="flex h-8 w-8 items-center justify-center rounded-lg bg-secondary/50 transition-colors hover:bg-secondary"
-                            title="View on Pi BlockExplorer"
+                            className="rounded-lg p-1.5 text-muted-foreground hover:bg-secondary hover:text-foreground"
+                            title="View on Explorer"
                           >
-                            <ExternalLink className="h-3.5 w-3.5 text-muted-foreground" />
+                            <ExternalLink className="h-4 w-4" />
                           </a>
                         </div>
                       </TableCell>
@@ -864,105 +799,10 @@ export default function AdminDashboard() {
           )}
         </section>
 
-        {/* Mobile Order Cards (Alternative view for small screens) */}
-        <section className="mt-4 space-y-3 lg:hidden">
-          {filteredOrders.map((order) => (
-            <div
-              key={`mobile_${order.id}`}
-              className="rounded-xl bg-card p-4 border border-border/50"
-            >
-              {/* Header */}
-              <div className="flex items-start justify-between mb-3">
-                <div>
-                  <p className="text-sm font-medium text-foreground">
-                    @{order.username}
-                  </p>
-                  <p className="text-xs text-muted-foreground">
-                    {formatDate(order.created_at)}
-                  </p>
-                </div>
-                {getStatusBadge(order.status)}
-              </div>
-
-              {/* Details Grid */}
-              <div className="grid grid-cols-2 gap-3 text-sm">
-                <div>
-                  <p className="text-xs text-muted-foreground">Amount</p>
-                  <p className="font-semibold text-primary">
-                    {order.amount_pi.toFixed(2)} Pi
-                  </p>
-                </div>
-                <div>
-                  <p className="text-xs text-muted-foreground">Phone</p>
-                  <p className="font-mono text-foreground">
-                    {order.phone_number}
-                  </p>
-                </div>
-                <div>
-                  <p className="text-xs text-muted-foreground">Network</p>
-                  <Badge
-                    className={cn(
-                      "text-xs font-medium mt-1",
-                      getNetworkColor(order.network_provider)
-                    )}
-                  >
-                    {order.network_provider}
-                  </Badge>
-                </div>
-                <div>
-                  <p className="text-xs text-muted-foreground">Plan</p>
-                  <p className="text-foreground">{order.data_plan}</p>
-                </div>
-              </div>
-
-              {/* Actions */}
-              <div className="mt-4 flex items-center justify-between border-t border-border/50 pt-3">
-                {order.status !== "failed" && (
-                  <div className="flex items-center gap-2">
-                    <span className="text-xs text-muted-foreground">
-                      Mark as{" "}
-                      {order.status === "pending" ? "completed" : "pending"}
-                    </span>
-                    <Switch
-                      checked={order.status === "completed"}
-                      onCheckedChange={() => toggleOrderStatus(order.id)}
-                      className="data-[state=checked]:bg-success"
-                    />
-                  </div>
-                )}
-                <div className="flex items-center gap-2">
-                  <button
-                    onClick={() =>
-                      copyToClipboard(order.txid, `txid_mobile_${order.id}`)
-                    }
-                    className="flex h-8 items-center gap-1 rounded-lg bg-secondary px-3 text-xs text-foreground"
-                  >
-                    <Copy className="h-3 w-3" />
-                    TXID
-                  </button>
-                  <a
-                    href={getExplorerUrl(order.txid)}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="flex h-8 items-center gap-1 rounded-lg bg-primary px-3 text-xs text-primary-foreground"
-                  >
-                    <ExternalLink className="h-3 w-3" />
-                    Explorer
-                  </a>
-                </div>
-              </div>
-            </div>
-          ))}
-        </section>
-
         {/* Footer */}
         <footer className="mt-8 text-center">
           <p className="text-xs text-muted-foreground">
-            Pivtu Admin Panel
-          </p>
-          <p className="mt-1 text-[10px] text-muted-foreground/70">
-            Powered by{" "}
-            <span className="font-semibold text-primary">Pi Network</span>
+            Pivtu Admin Panel - Powered by Pi Network
           </p>
         </footer>
       </main>

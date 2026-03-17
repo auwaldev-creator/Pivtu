@@ -238,14 +238,15 @@ export interface UsePiSDKReturn {
 const SESSION_KEY = "pivtu_session";
 const SESSION_EXPIRY_KEY = "pivtu_session_expiry";
 
-// Session duration: until tab is closed (sessionStorage) or 24 hours for localStorage fallback
-const SESSION_DURATION_MS = 24 * 60 * 60 * 1000;
+// Session duration: 7 days for persistent login
+const SESSION_DURATION_MS = 7 * 24 * 60 * 60 * 1000;
 
 interface StoredSession {
   user: User;
   accessToken: string;
   walletAddress: string | null;
   walletBalance: number | null;
+  authenticatedAt: number;
 }
 
 export function usePiSDK(): UsePiSDKReturn {
@@ -268,21 +269,15 @@ export function usePiSDK(): UsePiSDKReturn {
   } | null>(null);
 
   // ============================================================================
-  // SESSION PERSISTENCE - Restore session on mount
+  // SESSION PERSISTENCE - Restore session on mount (Persistent across navigation)
   // ============================================================================
   useEffect(() => {
     if (typeof window === "undefined" || sessionRestored) return;
 
     try {
-      // Try sessionStorage first (persists until tab closes)
-      let storedSession = sessionStorage.getItem(SESSION_KEY);
-      let expiry = sessionStorage.getItem(SESSION_EXPIRY_KEY);
-
-      // Fallback to localStorage if session not in sessionStorage
-      if (!storedSession) {
-        storedSession = localStorage.getItem(SESSION_KEY);
-        expiry = localStorage.getItem(SESSION_EXPIRY_KEY);
-      }
+      // Use localStorage for persistent session across page navigation
+      const storedSession = localStorage.getItem(SESSION_KEY);
+      const expiry = localStorage.getItem(SESSION_EXPIRY_KEY);
 
       if (storedSession && expiry) {
         const expiryTime = parseInt(expiry, 10);
@@ -296,8 +291,6 @@ export function usePiSDK(): UsePiSDKReturn {
           console.log("[Pi SDK] Session restored for:", session.user.username);
         } else {
           // Session expired, clear it
-          sessionStorage.removeItem(SESSION_KEY);
-          sessionStorage.removeItem(SESSION_EXPIRY_KEY);
           localStorage.removeItem(SESSION_KEY);
           localStorage.removeItem(SESSION_EXPIRY_KEY);
           console.log("[Pi SDK] Session expired, cleared");
@@ -320,16 +313,14 @@ export function usePiSDK(): UsePiSDKReturn {
         accessToken,
         walletAddress,
         walletBalance,
+        authenticatedAt: Date.now(),
       };
       const expiry = (Date.now() + SESSION_DURATION_MS).toString();
 
       try {
-        // Store in both sessionStorage and localStorage
-        sessionStorage.setItem(SESSION_KEY, JSON.stringify(session));
-        sessionStorage.setItem(SESSION_EXPIRY_KEY, expiry);
+        // Store only in localStorage for persistence across navigation
         localStorage.setItem(SESSION_KEY, JSON.stringify(session));
         localStorage.setItem(SESSION_EXPIRY_KEY, expiry);
-        console.log("[Pi SDK] Session saved");
       } catch (error) {
         console.warn("[Pi SDK] Failed to save session:", error);
       }
@@ -491,10 +482,8 @@ export function usePiSDK(): UsePiSDKReturn {
     setIsAuthenticated(false);
     setIncompletePayment(null);
 
-    // Clear stored session
+    // Clear stored session from localStorage
     try {
-      sessionStorage.removeItem(SESSION_KEY);
-      sessionStorage.removeItem(SESSION_EXPIRY_KEY);
       localStorage.removeItem(SESSION_KEY);
       localStorage.removeItem(SESSION_EXPIRY_KEY);
     } catch (error) {

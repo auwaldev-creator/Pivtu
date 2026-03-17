@@ -1,11 +1,13 @@
 "use client";
 
-import { Wallet, RefreshCw, ExternalLink } from "lucide-react";
+import { Wallet, RefreshCw, ExternalLink, Copy, Check } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { useState } from "react";
 
 interface WalletCardProps {
   balance: number;
   username: string;
+  walletAddress?: string | null;
   isLoading?: boolean;
   onRefresh?: () => void;
 }
@@ -13,9 +15,28 @@ interface WalletCardProps {
 export function WalletCard({
   balance,
   username,
+  walletAddress,
   isLoading,
   onRefresh,
 }: WalletCardProps) {
+  const [copied, setCopied] = useState(false);
+
+  const copyAddress = async () => {
+    if (!walletAddress) return;
+    try {
+      await navigator.clipboard.writeText(walletAddress);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch {
+      console.error("Failed to copy address");
+    }
+  };
+
+  const truncateAddress = (address: string) => {
+    if (address.length <= 16) return address;
+    return `${address.slice(0, 8)}...${address.slice(-8)}`;
+  };
+
   return (
     <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-primary/90 to-accent/80 p-6 shadow-xl">
       {/* Background decoration */}
@@ -30,9 +51,7 @@ export function WalletCard({
               <Wallet className="h-6 w-6 text-white" />
             </div>
             <div>
-              <p className="text-sm font-medium text-white/70">
-                Welcome back,
-              </p>
+              <p className="text-sm font-medium text-white/70">Welcome back,</p>
               <p className="text-lg font-semibold text-white">{username}</p>
             </div>
           </div>
@@ -48,9 +67,32 @@ export function WalletCard({
           </button>
         </div>
 
+        {/* Wallet Address */}
+        {walletAddress && (
+          <div className="mt-4">
+            <p className="text-xs font-medium text-white/60">Wallet Address</p>
+            <div className="mt-1 flex items-center gap-2">
+              <span className="font-mono text-sm text-white/90">
+                {truncateAddress(walletAddress)}
+              </span>
+              <button
+                onClick={copyAddress}
+                className="rounded-lg p-1.5 transition-colors hover:bg-white/20"
+                title="Copy address"
+              >
+                {copied ? (
+                  <Check className="h-4 w-4 text-white" />
+                ) : (
+                  <Copy className="h-4 w-4 text-white/70" />
+                )}
+              </button>
+            </div>
+          </div>
+        )}
+
         {/* Balance */}
-        <div className="mt-6">
-          <p className="text-sm font-medium text-white/70">Pi Testnet Balance</p>
+        <div className="mt-4">
+          <p className="text-sm font-medium text-white/70">Pi Balance</p>
           <div className="mt-1 flex items-baseline gap-2">
             <span className="text-4xl font-bold tracking-tight text-white">
               {balance.toFixed(4)}
@@ -60,17 +102,19 @@ export function WalletCard({
         </div>
 
         {/* BlockExplorer Link */}
-        <div className="mt-6 flex items-center gap-2 rounded-xl bg-white/10 px-4 py-3 backdrop-blur-sm">
-          <ExternalLink className="h-4 w-4 text-white/80" />
-          <a 
-            href="https://blockexplorer.minepi.com/testnet/"
-            target="_blank"
-            rel="noopener noreferrer"
-            className="text-sm font-medium text-white hover:underline"
-          >
-            View on Pi BlockExplorer
-          </a>
-        </div>
+        {walletAddress && (
+          <div className="mt-5 flex items-center gap-2 rounded-xl bg-white/10 px-4 py-3 backdrop-blur-sm">
+            <ExternalLink className="h-4 w-4 text-white/80" />
+            <a
+              href={`https://blockexplorer.minepi.com/testnet/account/${walletAddress}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-sm font-medium text-white hover:underline"
+            >
+              View on Pi BlockExplorer
+            </a>
+          </div>
+        )}
       </div>
     </div>
   );

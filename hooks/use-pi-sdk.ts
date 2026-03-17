@@ -234,6 +234,20 @@ export interface UsePiSDKReturn {
 // MAIN HOOK - Following Pi Demo App patterns
 // ============================================================================
 
+// Session storage keys
+const SESSION_KEY = "pivtu_session";
+const SESSION_EXPIRY_KEY = "pivtu_session_expiry";
+
+// Session duration: until tab is closed (sessionStorage) or 24 hours for localStorage fallback
+const SESSION_DURATION_MS = 24 * 60 * 60 * 1000;
+
+interface StoredSession {
+  user: User;
+  accessToken: string;
+  walletAddress: string | null;
+  walletBalance: number | null;
+}
+
 export function usePiSDK(): UsePiSDKReturn {
   const [isSDKLoaded, setIsSDKLoaded] = useState(false);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
@@ -245,12 +259,82 @@ export function usePiSDK(): UsePiSDKReturn {
   const [paymentStatus, setPaymentStatus] = useState<PaymentStatus>("idle");
   const [lastReceipt, setLastReceipt] = useState<TransactionReceipt | null>(null);
   const [incompletePayment, setIncompletePayment] = useState<PaymentDTO | null>(null);
+  const [sessionRestored, setSessionRestored] = useState(false);
 
   // Keep track of current payment metadata for receipt generation
   const currentPaymentRef = useRef<{
     amount: number;
     metadata: MyPaymentMetadata;
   } | null>(null);
+
+  // ============================================================================
+  // SESSION PERSISTENCE - Restore session on mount
+  // ============================================================================
+  useEffect(() => {
+    if (typeof window === "undefined" || sessionRestored) return;
+
+    try {
+      // Try sessionStorage first (persists until tab closes)
+      let storedSession = sessionStorage.getItem(SESSION_KEY);
+      let expiry = sessionStorage.getItem(SESSION_EXPIRY_KEY);
+
+      // Fallback to localStorage if session not in sessionStorage
+      if (!storedSession) {
+        storedSession = localStorage.getItem(SESSION_KEY);
+        expiry = localStorage.getItem(SESSION_EXPIRY_KEY);
+      }
+
+      if (storedSession && expiry) {
+        const expiryTime = parseInt(expiry, 10);
+        if (Date.now() < expiryTime) {
+          const session: StoredSession = JSON.parse(storedSession);
+          setUser(session.user);
+          setAccessToken(session.accessToken);
+          setWalletAddress(session.walletAddress);
+          setWalletBalance(session.walletBalance);
+          setIsAuthenticated(true);
+          console.log("[Pi SDK] Session restored for:", session.user.username);
+        } else {
+          // Session expired, clear it
+          sessionStorage.removeItem(SESSION_KEY);
+          sessionStorage.removeItem(SESSION_EXPIRY_KEY);
+          localStorage.removeItem(SESSION_KEY);
+          localStorage.removeItem(SESSION_EXPIRY_KEY);
+          console.log("[Pi SDK] Session expired, cleared");
+        }
+      }
+    } catch (error) {
+      console.warn("[Pi SDK] Failed to restore session:", error);
+    }
+
+    setSessionRestored(true);
+  }, [sessionRestored]);
+
+  // Save session whenever auth state changes
+  useEffect(() => {
+    if (typeof window === "undefined" || !sessionRestored) return;
+
+    if (isAuthenticated && user && accessToken) {
+      const session: StoredSession = {
+        user,
+        accessToken,
+        walletAddress,
+        walletBalance,
+      };
+      const expiry = (Date.now() + SESSION_DURATION_MS).toString();
+
+      try {
+        // Store in both sessionStorage and localStorage
+        sessionStorage.setItem(SESSION_KEY, JSON.stringify(session));
+        sessionStorage.setItem(SESSION_EXPIRY_KEY, expiry);
+        localStorage.setItem(SESSION_KEY, JSON.stringify(session));
+        localStorage.setItem(SESSION_EXPIRY_KEY, expiry);
+        console.log("[Pi SDK] Session saved");
+      } catch (error) {
+        console.warn("[Pi SDK] Failed to save session:", error);
+      }
+    }
+  }, [isAuthenticated, user, accessToken, walletAddress, walletBalance, sessionRestored]);
 
   // ============================================================================
   // LOAD PI SDK SCRIPT
@@ -406,6 +490,16 @@ export function usePiSDK(): UsePiSDKReturn {
     setWalletBalance(null);
     setIsAuthenticated(false);
     setIncompletePayment(null);
+
+    // Clear stored session
+    try {
+      sessionStorage.removeItem(SESSION_KEY);
+      sessionStorage.removeItem(SESSION_EXPIRY_KEY);
+      localStorage.removeItem(SESSION_KEY);
+      localStorage.removeItem(SESSION_EXPIRY_KEY);
+    } catch (error) {
+      console.warn("[Pi SDK] Failed to clear session:", error);
+    }
 
     // Sign out on backend
     apiClient.get("/api/user/signout").catch((error) => {

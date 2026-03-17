@@ -29,7 +29,6 @@ import {
   Shield,
   AlertTriangle,
   Settings,
-  ShieldCheck,
 } from "lucide-react";
 
 const dataPlans: DataPlan[] = [
@@ -82,6 +81,7 @@ export default function VTUDashboard() {
     isAuthenticated,
     isAuthenticating,
     user,
+    walletAddress,
     walletBalance,
     paymentStatus,
     lastReceipt,
@@ -226,7 +226,7 @@ export default function VTUDashboard() {
     }
   };
 
-  // Handle payment - Following Pi Demo App orderProduct pattern with PiRC metadata
+  // Handle payment with real-time notifications
   const handlePayment = async () => {
     if (!isFormValid || !selectedPlan || !selectedNetwork) return;
 
@@ -240,6 +240,13 @@ export default function VTUDashboard() {
       return;
     }
 
+    // Show pending notification
+    showToast(
+      "info",
+      "Processing Payment",
+      `Initiating ${selectedPlan.size} data purchase for ${phoneNumber}...`
+    );
+
     try {
       // Create payment with PiRC-compliant metadata
       const memo = `Pivtu - ${selectedPlan.size} for ${phoneNumber} (${selectedNetwork.toUpperCase()})`;
@@ -250,13 +257,19 @@ export default function VTUDashboard() {
         phone_number: phoneNumber,
         data_plan_id: selectedPlan.id,
         data_plan_size: selectedPlan.size,
-        // PiRC additional fields
         service_type: "data_bundle",
         provider_code: selectedNetwork.toUpperCase(),
         recipient_identifier: phoneNumber,
       });
 
       if (result.success && result.paymentId && result.txid) {
+        // Show delivery notification
+        showToast(
+          "info",
+          "Delivering Data",
+          "Payment successful! Delivering your data bundle..."
+        );
+
         // Call VTU API to deliver data
         const delivery = await deliverData(result.paymentId, result.txid);
         setVtuDelivery(delivery);
@@ -276,6 +289,13 @@ export default function VTUDashboard() {
         // Refresh wallet balance
         refreshWalletBalance();
 
+        // Show success notification
+        showToast(
+          "success",
+          "Transaction Complete",
+          `${selectedPlan.size} data has been delivered to ${phoneNumber}!`
+        );
+
         // Show success screen
         setShowSuccessScreen(true);
 
@@ -290,28 +310,28 @@ export default function VTUDashboard() {
             showToast(
               "error",
               "Insufficient Pi Balance",
-              "You don't have enough Pi to complete this transaction. Please top up your wallet."
+              "You don't have enough Pi to complete this transaction."
             );
             break;
           case "NETWORK_BUSY":
             showToast(
               "warning",
               "Network Busy",
-              "The Pi Network is currently experiencing high traffic. Please try again in a few moments."
+              "The Pi Network is experiencing high traffic. Please try again."
             );
             break;
           case "CANCELLED":
             showToast(
               "info",
               "Payment Cancelled",
-              "You cancelled the payment. No Pi has been deducted from your wallet."
+              "You cancelled the payment. No Pi has been deducted."
             );
             break;
           default:
             showToast(
               "error",
               "Payment Failed",
-              result.error || "An error occurred during payment. Please try again."
+              result.error || "An error occurred. Please try again."
             );
         }
         resetPaymentStatus();
@@ -337,7 +357,7 @@ export default function VTUDashboard() {
   // Refresh wallet
   const handleRefreshWallet = useCallback(() => {
     refreshWalletBalance();
-    showToast("info", "Wallet Updated", "Your balance has been refreshed.");
+    showToast("info", "Refreshing Balance", "Fetching your latest Pi balance...");
   }, [showToast, refreshWalletBalance]);
 
   // Show wallet connection screen if not authenticated
@@ -400,7 +420,7 @@ export default function VTUDashboard() {
       />
 
       {/* Header with Sign Out */}
-      <Header />
+      <Header onSignOut={handleSignOut} />
 
       {/* Main Content */}
       <main className="px-4 pb-8">
@@ -432,12 +452,13 @@ export default function VTUDashboard() {
           <WalletCard
             balance={displayBalance}
             username={user?.username || "Pioneer"}
+            walletAddress={walletAddress}
             onRefresh={handleRefreshWallet}
           />
         </section>
 
-        {/* Quick Actions */}
-        <section className="mt-6 grid grid-cols-5 gap-2">
+        {/* Quick Actions - Removed Admin button */}
+        <section className="mt-6 grid grid-cols-4 gap-3">
           {[
             {
               icon: History,
@@ -463,12 +484,6 @@ export default function VTUDashboard() {
               color: "text-muted-foreground",
               href: "/settings",
             },
-            {
-              icon: ShieldCheck,
-              label: "Admin",
-              color: "text-primary",
-              href: "/admin",
-            },
           ].map(({ icon: Icon, label, color, href, onClick }) =>
             href && href !== "#" ? (
               <Link
@@ -484,7 +499,7 @@ export default function VTUDashboard() {
             ) : (
               <button
                 key={label}
-                onClick={onClick || (label === "Sign Out" ? handleSignOut : undefined)}
+                onClick={onClick}
                 className="flex flex-col items-center gap-2 rounded-xl bg-card p-3 transition-all hover:bg-secondary active:scale-95"
               >
                 <Icon className={`h-5 w-5 ${color}`} />
@@ -568,7 +583,7 @@ export default function VTUDashboard() {
             </p>
           </div>
 
-          {/* SDK Status indicator */}
+          {/* Connected Status */}
           <div className="mt-4 flex items-center justify-center gap-2">
             <div className="h-2 w-2 rounded-full bg-success" />
             <span className="text-xs text-muted-foreground">
@@ -592,9 +607,6 @@ export default function VTUDashboard() {
               Terms of Service
             </Link>
           </div>
-          <p className="mt-2 text-[10px] text-muted-foreground/50">
-            PiRC Service Payment Compliant
-          </p>
         </footer>
       </main>
     </div>

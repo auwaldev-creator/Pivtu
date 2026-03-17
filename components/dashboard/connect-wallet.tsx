@@ -81,12 +81,12 @@ export function ConnectWallet({ isSDKLoaded, isConnecting, onConnect }: ConnectW
           {!isSDKLoaded ? (
             <>
               <Loader2 className="h-6 w-6 animate-spin" />
-              <span className="text-lg">Loading Pi SDK...</span>
+              <span className="text-lg">Connecting...</span>
             </>
           ) : isConnecting ? (
             <>
               <Loader2 className="h-6 w-6 animate-spin" />
-              <span className="text-lg">Connecting...</span>
+              <span className="text-lg">Authenticating...</span>
             </>
           ) : (
             <>
@@ -96,19 +96,6 @@ export function ConnectWallet({ isSDKLoaded, isConnecting, onConnect }: ConnectW
           )}
         </div>
       </button>
-
-      {/* SDK Status */}
-      <div className="mt-6 flex items-center gap-2">
-        <div
-          className={cn(
-            "h-2 w-2 rounded-full transition-colors",
-            isSDKLoaded ? "bg-success" : sdkLoadTimeout ? "bg-warning" : "bg-muted-foreground animate-pulse"
-          )}
-        />
-        <span className="text-xs text-muted-foreground">
-          {isSDKLoaded ? "Pi SDK Ready" : sdkLoadTimeout ? "Pi Browser Required" : "Initializing Pi SDK..."}
-        </span>
-      </div>
 
       {/* Pi Browser Required Notice */}
       {sdkLoadTimeout && !isSDKLoaded && (

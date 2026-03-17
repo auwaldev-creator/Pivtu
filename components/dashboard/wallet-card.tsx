@@ -67,31 +67,8 @@ export function WalletCard({
           </button>
         </div>
 
-        {/* Wallet Address */}
-        {walletAddress && (
-          <div className="mt-4">
-            <p className="text-xs font-medium text-white/60">Wallet Address</p>
-            <div className="mt-1 flex items-center gap-2">
-              <span className="font-mono text-sm text-white/90">
-                {truncateAddress(walletAddress)}
-              </span>
-              <button
-                onClick={copyAddress}
-                className="rounded-lg p-1.5 transition-colors hover:bg-white/20"
-                title="Copy address"
-              >
-                {copied ? (
-                  <Check className="h-4 w-4 text-white" />
-                ) : (
-                  <Copy className="h-4 w-4 text-white/70" />
-                )}
-              </button>
-            </div>
-          </div>
-        )}
-
         {/* Balance */}
-        <div className="mt-4">
+        <div className="mt-5">
           <p className="text-sm font-medium text-white/70">Pi Balance</p>
           <div className="mt-1 flex items-baseline gap-2">
             <span className="text-4xl font-bold tracking-tight text-white">
@@ -100,6 +77,37 @@ export function WalletCard({
             <span className="text-xl font-semibold text-white/80">Pi</span>
           </div>
         </div>
+
+        {/* Wallet Address - Displayed below balance */}
+        {walletAddress && (
+          <div className="mt-5 rounded-xl bg-white/10 p-3 backdrop-blur-sm">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-xs font-medium text-white/60">Wallet Address</p>
+                <p className="mt-1 font-mono text-sm text-white">
+                  {truncateAddress(walletAddress)}
+                </p>
+              </div>
+              <button
+                onClick={copyAddress}
+                className="flex items-center gap-1.5 rounded-lg bg-white/20 px-3 py-2 text-xs font-medium text-white transition-all hover:bg-white/30 active:scale-95"
+                title="Copy address"
+              >
+                {copied ? (
+                  <>
+                    <Check className="h-4 w-4" />
+                    <span>Copied!</span>
+                  </>
+                ) : (
+                  <>
+                    <Copy className="h-4 w-4" />
+                    <span>Copy</span>
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
+        )}
 
         {/* BlockExplorer Link */}
         {walletAddress && (

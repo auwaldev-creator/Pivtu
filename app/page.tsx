@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect } from "react";
 import Link from "next/link";
 import { Header } from "@/components/dashboard/header";
 import { WalletCard } from "@/components/dashboard/wallet-card";
@@ -21,7 +21,7 @@ import {
 import { ConnectWallet } from "@/components/dashboard/connect-wallet";
 import { TransactionSuccess } from "@/components/dashboard/transaction-success";
 import { ProcessingOverlay } from "@/components/dashboard/processing-overlay";
-import { TestModeToggle } from "@/components/dashboard/test-mode-toggle";
+import { TransactionHistory } from "@/components/dashboard/transaction-history";
 import { usePiSDK } from "@/hooks/use-pi-sdk";
 import {
   History,
@@ -29,7 +29,6 @@ import {
   Shield,
   AlertTriangle,
   Settings,
-  TestTube,
   ShieldCheck,
 } from "lucide-react";
 
@@ -52,18 +51,30 @@ interface VTUDeliveryData {
   test_naira_balance: string;
 }
 
+// Transaction interface for history
+export interface Transaction {
+  id: string;
+  txid: string;
+  amount: number;
+  network_provider: string;
+  phone_number: string;
+  data_plan_size: string;
+  status: "completed" | "pending" | "failed";
+  timestamp: Date;
+}
+
 export default function VTUDashboard() {
   // State
   const [selectedNetwork, setSelectedNetwork] =
     useState<NetworkProvider | null>(null);
   const [phoneNumber, setPhoneNumber] = useState("");
   const [selectedPlan, setSelectedPlan] = useState<DataPlan | null>(null);
-  const [walletBalance, setWalletBalance] = useState(125.75);
   const [notification, setNotification] = useState<Notification | null>(null);
   const [showNotification, setShowNotification] = useState(false);
   const [showSuccessScreen, setShowSuccessScreen] = useState(false);
-  const [isTestMode, setIsTestMode] = useState(true); // Default to test mode
   const [vtuDelivery, setVtuDelivery] = useState<VTUDeliveryData | null>(null);
+  const [transactions, setTransactions] = useState<Transaction[]>([]);
+  const [showHistory, setShowHistory] = useState(false);
 
   // Pi SDK - Following Pi Demo App pattern
   const {
@@ -71,6 +82,7 @@ export default function VTUDashboard() {
     isAuthenticated,
     isAuthenticating,
     user,
+    walletBalance,
     paymentStatus,
     lastReceipt,
     incompletePayment,
@@ -79,7 +91,11 @@ export default function VTUDashboard() {
     resetPaymentStatus,
     signOut,
     handleIncompletePayment,
+    refreshWalletBalance,
   } = usePiSDK();
+
+  // Use wallet balance from Pi SDK or default to 0
+  const displayBalance = walletBalance ?? 0;
 
   // Derived state
   const phoneError =
@@ -95,6 +111,37 @@ export default function VTUDashboard() {
     paymentStatus !== "completed" &&
     paymentStatus !== "failed" &&
     paymentStatus !== "cancelled";
+
+  // Load transactions from localStorage
+  useEffect(() => {
+    if (typeof window !== "undefined" && user?.uid) {
+      const savedTransactions = localStorage.getItem(`transactions_${user.uid}`);
+      if (savedTransactions) {
+        const parsed = JSON.parse(savedTransactions);
+        setTransactions(
+          parsed.map((t: Transaction) => ({
+            ...t,
+            timestamp: new Date(t.timestamp),
+          }))
+        );
+      }
+    }
+  }, [user?.uid]);
+
+  // Save transactions to localStorage
+  const saveTransaction = useCallback(
+    (transaction: Transaction) => {
+      if (typeof window !== "undefined" && user?.uid) {
+        const updatedTransactions = [transaction, ...transactions];
+        setTransactions(updatedTransactions);
+        localStorage.setItem(
+          `transactions_${user.uid}`,
+          JSON.stringify(updatedTransactions)
+        );
+      }
+    },
+    [transactions, user?.uid]
+  );
 
   // Show notification helper
   const showToast = useCallback(
@@ -141,7 +188,7 @@ export default function VTUDashboard() {
     }
   };
 
-  // Call Mock VTU API to deliver data
+  // Call VTU API to deliver data
   const deliverData = async (
     paymentId: string,
     txid: string
@@ -184,18 +231,18 @@ export default function VTUDashboard() {
     if (!isFormValid || !selectedPlan || !selectedNetwork) return;
 
     // Check balance
-    if (selectedPlan.price > walletBalance) {
+    if (selectedPlan.price > displayBalance) {
       showToast(
         "error",
         "Insufficient Pi Balance",
-        `You need ${selectedPlan.price.toFixed(2)} Pi but only have ${walletBalance.toFixed(2)} Pi. Please top up your wallet.`
+        `You need ${selectedPlan.price.toFixed(2)} Pi but only have ${displayBalance.toFixed(2)} Pi. Please top up your wallet.`
       );
       return;
     }
 
     try {
       // Create payment with PiRC-compliant metadata
-      const memo = `Data Hub - ${selectedPlan.size} for ${phoneNumber} (${selectedNetwork.toUpperCase()})`;
+      const memo = `Pivtu - ${selectedPlan.size} for ${phoneNumber} (${selectedNetwork.toUpperCase()})`;
 
       // PiRC Service Payment metadata structure
       const result = await createPayment(selectedPlan.price, memo, {
@@ -207,16 +254,27 @@ export default function VTUDashboard() {
         service_type: "data_bundle",
         provider_code: selectedNetwork.toUpperCase(),
         recipient_identifier: phoneNumber,
-        is_test_mode: isTestMode,
       });
 
       if (result.success && result.paymentId && result.txid) {
-        // Call Mock VTU API to deliver data
+        // Call VTU API to deliver data
         const delivery = await deliverData(result.paymentId, result.txid);
         setVtuDelivery(delivery);
 
-        // Update wallet balance
-        setWalletBalance((prev) => prev - selectedPlan.price);
+        // Save transaction to history
+        saveTransaction({
+          id: result.paymentId,
+          txid: result.txid,
+          amount: selectedPlan.price,
+          network_provider: selectedNetwork,
+          phone_number: phoneNumber,
+          data_plan_size: selectedPlan.size,
+          status: "completed",
+          timestamp: new Date(),
+        });
+
+        // Refresh wallet balance
+        refreshWalletBalance();
 
         // Show success screen
         setShowSuccessScreen(true);
@@ -278,22 +336,9 @@ export default function VTUDashboard() {
 
   // Refresh wallet
   const handleRefreshWallet = useCallback(() => {
-    setTimeout(() => {
-      showToast("info", "Wallet Updated", "Your balance has been refreshed.");
-    }, 1000);
-  }, [showToast]);
-
-  // Handle test mode toggle
-  const handleTestModeToggle = (enabled: boolean) => {
-    setIsTestMode(enabled);
-    showToast(
-      "info",
-      enabled ? "Test Mode Enabled" : "Live Mode Enabled",
-      enabled
-        ? "All transactions will use Test Pi and Mock Naira."
-        : "Transactions will use real Pi. Be careful!"
-    );
-  };
+    refreshWalletBalance();
+    showToast("info", "Wallet Updated", "Your balance has been refreshed.");
+  }, [showToast, refreshWalletBalance]);
 
   // Show wallet connection screen if not authenticated
   if (!isAuthenticated) {
@@ -326,6 +371,16 @@ export default function VTUDashboard() {
     );
   }
 
+  // Show transaction history
+  if (showHistory) {
+    return (
+      <TransactionHistory
+        transactions={transactions}
+        onBack={() => setShowHistory(false)}
+      />
+    );
+  }
+
   return (
     <div className="min-h-screen bg-background">
       {/* Processing Overlay */}
@@ -349,30 +404,9 @@ export default function VTUDashboard() {
 
       {/* Main Content */}
       <main className="px-4 pb-8">
-        {/* Test Mode Toggle */}
-        <section className="mt-2 mb-4">
-          <TestModeToggle
-            isTestMode={isTestMode}
-            onToggle={handleTestModeToggle}
-          />
-        </section>
-
-        {/* Test Mode Banner */}
-        {isTestMode && (
-          <section className="mb-4">
-            <div className="flex items-center gap-3 rounded-xl bg-[#F59E0B]/10 border border-[#F59E0B]/30 p-3">
-              <TestTube className="h-5 w-5 shrink-0 text-[#F59E0B]" />
-              <p className="text-xs text-[#F59E0B]">
-                Test Mode Active - Using Test Pi & Mock Naira. No real
-                transactions.
-              </p>
-            </div>
-          </section>
-        )}
-
         {/* Incomplete Payment Alert */}
         {incompletePayment && (
-          <section className="mb-4">
+          <section className="mt-4 mb-4">
             <div className="flex items-center gap-3 rounded-xl bg-[#F59E0B]/10 p-4">
               <AlertTriangle className="h-5 w-5 shrink-0 text-[#F59E0B]" />
               <div className="flex-1">
@@ -394,9 +428,9 @@ export default function VTUDashboard() {
         )}
 
         {/* Wallet Card */}
-        <section className="mt-2">
+        <section className="mt-4">
           <WalletCard
-            balance={walletBalance}
+            balance={displayBalance}
             username={user?.username || "Pioneer"}
             onRefresh={handleRefreshWallet}
           />
@@ -409,7 +443,7 @@ export default function VTUDashboard() {
               icon: History,
               label: "History",
               color: "text-primary",
-              href: "/settings",
+              onClick: () => setShowHistory(true),
             },
             {
               icon: HelpCircle,
@@ -435,8 +469,8 @@ export default function VTUDashboard() {
               color: "text-primary",
               href: "/admin",
             },
-          ].map(({ icon: Icon, label, color, href }) =>
-            href !== "#" ? (
+          ].map(({ icon: Icon, label, color, href, onClick }) =>
+            href && href !== "#" ? (
               <Link
                 key={label}
                 href={href}
@@ -450,7 +484,7 @@ export default function VTUDashboard() {
             ) : (
               <button
                 key={label}
-                onClick={label === "Sign Out" ? handleSignOut : undefined}
+                onClick={onClick || (label === "Sign Out" ? handleSignOut : undefined)}
                 className="flex flex-col items-center gap-2 rounded-xl bg-card p-3 transition-all hover:bg-secondary active:scale-95"
               >
                 <Icon className={`h-5 w-5 ${color}`} />
@@ -510,18 +544,10 @@ export default function VTUDashboard() {
                   {selectedPlan.validity}
                 </span>
               </div>
-              {isTestMode && (
-                <div className="mt-2 flex items-center justify-between text-sm">
-                  <span className="text-muted-foreground">Mode</span>
-                  <span className="font-medium text-[#F59E0B]">
-                    Test (Mock Naira)
-                  </span>
-                </div>
-              )}
               <div className="mt-2 flex items-center justify-between border-t border-border pt-2">
                 <span className="font-medium text-foreground">Total</span>
                 <span className="text-lg font-bold text-primary">
-                  {selectedPlan.price.toFixed(2)} {isTestMode ? "Test Pi" : "Pi"}
+                  {selectedPlan.price.toFixed(2)} Pi
                 </span>
               </div>
             </div>
@@ -546,8 +572,7 @@ export default function VTUDashboard() {
           <div className="mt-4 flex items-center justify-center gap-2">
             <div className="h-2 w-2 rounded-full bg-success" />
             <span className="text-xs text-muted-foreground">
-              Connected as @{user?.username}{" "}
-              {isTestMode ? "(Sandbox/Test Mode)" : "(Mainnet)"}
+              Connected as @{user?.username}
             </span>
           </div>
         </section>
@@ -558,11 +583,15 @@ export default function VTUDashboard() {
             Powered by{" "}
             <span className="font-semibold text-primary">Pi Network</span>
           </p>
-          <p className="mt-1 text-[10px] text-muted-foreground/70">
-            {isTestMode
-              ? "Testnet Environment - For Development Only"
-              : "Mainnet - Live Transactions"}
-          </p>
+          <div className="mt-2 flex items-center justify-center gap-4 text-[10px] text-muted-foreground/70">
+            <Link href="/privacy" className="hover:text-primary">
+              Privacy Policy
+            </Link>
+            <span>|</span>
+            <Link href="/terms" className="hover:text-primary">
+              Terms of Service
+            </Link>
+          </div>
           <p className="mt-2 text-[10px] text-muted-foreground/50">
             PiRC Service Payment Compliant
           </p>

@@ -26,6 +26,10 @@ export interface AuthResult {
     uid: string;
     username: string;
     roles: string[];
+    credentials?: {
+      scopes: string[];
+      valid_until: { timestamp: number; iso8601: string };
+    };
   };
 }
 
@@ -209,6 +213,8 @@ export interface UsePiSDKReturn {
   isAuthenticating: boolean;
   user: User | null;
   accessToken: string | null;
+  walletAddress: string | null;
+  walletBalance: number | null;
   paymentStatus: PaymentStatus;
   lastReceipt: TransactionReceipt | null;
   incompletePayment: PaymentDTO | null;
@@ -221,6 +227,7 @@ export interface UsePiSDKReturn {
   resetPaymentStatus: () => void;
   signOut: () => void;
   handleIncompletePayment: () => Promise<void>;
+  refreshWalletBalance: () => Promise<void>;
 }
 
 // ============================================================================
@@ -233,6 +240,8 @@ export function usePiSDK(): UsePiSDKReturn {
   const [isAuthenticating, setIsAuthenticating] = useState(false);
   const [user, setUser] = useState<User | null>(null);
   const [accessToken, setAccessToken] = useState<string | null>(null);
+  const [walletAddress, setWalletAddress] = useState<string | null>(null);
+  const [walletBalance, setWalletBalance] = useState<number | null>(null);
   const [paymentStatus, setPaymentStatus] = useState<PaymentStatus>("idle");
   const [lastReceipt, setLastReceipt] = useState<TransactionReceipt | null>(null);
   const [incompletePayment, setIncompletePayment] = useState<PaymentDTO | null>(null);
@@ -344,18 +353,24 @@ export function usePiSDK(): UsePiSDKReturn {
     setIsAuthenticating(true);
 
     try {
-      // Scopes from Pi Demo App
-      const scopes = ["username", "payments", "roles", "in_app_notifications"];
-      const authResult: AuthResult = await window.Pi.authenticate(
+      // Scopes from Pi Demo App - include wallet_address for balance lookup
+      const scopes = ["username", "payments", "roles", "wallet_address"];
+      const authResult = await window.Pi.authenticate(
         scopes,
         onIncompletePaymentFound
       );
 
-      // Sign in user on backend
-      await signInUser(authResult);
+      // Sign in user on backend and get wallet address
+      const signInResponse = await signInUser(authResult);
 
       setUser(authResult.user);
       setAccessToken(authResult.accessToken);
+      
+      // Set wallet address from sign-in response or auth result
+      if (signInResponse?.walletAddress) {
+        setWalletAddress(signInResponse.walletAddress);
+      }
+      
       setIsAuthenticated(true);
       console.log("[Pi SDK] User authenticated:", authResult.user.username);
       return true;
@@ -368,13 +383,15 @@ export function usePiSDK(): UsePiSDKReturn {
   }, [isAuthenticated, user, onIncompletePaymentFound]);
 
   // Sign in user on backend
-  const signInUser = async (authResult: AuthResult): Promise<void> => {
+  const signInUser = async (authResult: AuthResult): Promise<{ walletAddress?: string } | null> => {
     try {
-      await apiClient.post("/api/user/signin", { authResult });
+      const response = await apiClient.post<{ walletAddress?: string }>("/api/user/signin", { authResult });
       console.log("[Pi SDK] User signed in on backend");
+      return response;
     } catch (error) {
       // In sandbox mode, backend may not be available - that's OK
       console.warn("[Pi SDK] Backend signin failed (OK in sandbox):", error);
+      return null;
     }
   };
 
@@ -382,6 +399,8 @@ export function usePiSDK(): UsePiSDKReturn {
   const signOut = useCallback(() => {
     setUser(null);
     setAccessToken(null);
+    setWalletAddress(null);
+    setWalletBalance(null);
     setIsAuthenticated(false);
     setIncompletePayment(null);
 
@@ -486,7 +505,7 @@ export function usePiSDK(): UsePiSDKReturn {
                     currentPaymentRef.current?.metadata.data_plan_size ||
                     fullMetadata.data_plan_size,
                   timestamp: new Date(),
-                  txLink: `https://pi-blockchain.net/tx/${txid}`,
+                  txLink: `https://blockexplorer.minepi.com/testnet/tx/${txid}`,
                 };
 
                 setLastReceipt(receipt);
@@ -514,7 +533,7 @@ export function usePiSDK(): UsePiSDKReturn {
                       currentPaymentRef.current?.metadata.data_plan_size ||
                       fullMetadata.data_plan_size,
                     timestamp: new Date(),
-                    txLink: `https://pi-blockchain.net/tx/${txid}`,
+                    txLink: `https://blockexplorer.minepi.com/testnet/tx/${txid}`,
                   };
 
                   setLastReceipt(receipt);
@@ -623,6 +642,50 @@ export function usePiSDK(): UsePiSDKReturn {
   );
 
   // ============================================================================
+  // WALLET BALANCE - Fetch from Pi Testnet BlockExplorer API
+  // ============================================================================
+  const refreshWalletBalance = useCallback(async (): Promise<void> => {
+    if (!walletAddress) {
+      console.log("[Pi SDK] No wallet address to fetch balance");
+      return;
+    }
+
+    try {
+      // Fetch balance from Pi Testnet Horizon API
+      const response = await fetch(
+        `https://api.testnet.minepi.com/accounts/${walletAddress}`
+      );
+
+      if (response.ok) {
+        const data = await response.json();
+        // Find the native Pi balance
+        const nativeBalance = data.balances?.find(
+          (b: { asset_type: string }) => b.asset_type === "native"
+        );
+        if (nativeBalance) {
+          setWalletBalance(parseFloat(nativeBalance.balance));
+          console.log("[Pi SDK] Wallet balance updated:", nativeBalance.balance);
+        }
+      } else if (response.status === 404) {
+        // Account not found on testnet, set balance to 0
+        setWalletBalance(0);
+        console.log("[Pi SDK] Account not found on testnet, balance set to 0");
+      } else {
+        console.error("[Pi SDK] Failed to fetch balance:", response.status);
+      }
+    } catch (error) {
+      console.error("[Pi SDK] Error fetching wallet balance:", error);
+    }
+  }, [walletAddress]);
+
+  // Auto-refresh balance when wallet address changes
+  useEffect(() => {
+    if (walletAddress) {
+      refreshWalletBalance();
+    }
+  }, [walletAddress, refreshWalletBalance]);
+
+  // ============================================================================
   // RETURN HOOK VALUES
   // ============================================================================
   return {
@@ -631,6 +694,8 @@ export function usePiSDK(): UsePiSDKReturn {
     isAuthenticating,
     user,
     accessToken,
+    walletAddress,
+    walletBalance,
     paymentStatus,
     lastReceipt,
     incompletePayment,
@@ -639,5 +704,6 @@ export function usePiSDK(): UsePiSDKReturn {
     resetPaymentStatus,
     signOut,
     handleIncompletePayment,
+    refreshWalletBalance,
   };
 }

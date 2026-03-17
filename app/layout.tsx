@@ -15,8 +15,8 @@ export const viewport: Viewport = {
 }
 
 export const metadata: Metadata = {
-  title: 'Data Hub - VTU on Pi Network',
-  description: 'Buy data bundles instantly with Pi cryptocurrency. Fast, secure, and reliable VTU service on Pi Network.',
+  title: 'Pivtu - VTU Service on Pi Network',
+  description: 'Purchase data bundles instantly with Pi cryptocurrency. Fast, secure, and reliable Virtual Top-Up service powered by Pi Network.',
   generator: 'v0.app',
   icons: {
     icon: [

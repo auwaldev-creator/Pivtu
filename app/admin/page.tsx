@@ -18,7 +18,10 @@ import {
   TrendingUp,
   AlertTriangle,
   ChevronDown,
-  MoreHorizontal,
+  Lock,
+  ShieldAlert,
+  Eye,
+  EyeOff,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
@@ -31,6 +34,10 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { usePiSDK } from "@/hooks/use-pi-sdk";
+
+// Admin wallet address - only this address can access admin panel
+const ADMIN_WALLET_ADDRESS = "GAIEJAHECAU4IR3QZ2KPCDJDL5WGLBWZRF4QQ4RTTZ5AIVQ74SVFHEU5";
 
 // Types
 interface Order {
@@ -49,7 +56,7 @@ interface Order {
   delivery_id?: string;
 }
 
-// Mock orders data (in production, fetch from backend)
+// Sample orders data (in production, fetch from backend)
 const initialOrders: Order[] = [
   {
     id: "order_001",
@@ -175,9 +182,147 @@ function StatsCard({
   );
 }
 
+// Admin Login Component
+function AdminLogin({
+  onLogin,
+  error,
+  isLoading,
+}: {
+  onLogin: (password: string) => void;
+  error: string | null;
+  isLoading: boolean;
+}) {
+  const [password, setPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    onLogin(password);
+  };
+
+  return (
+    <div className="flex min-h-screen flex-col items-center justify-center bg-background px-6">
+      <div className="w-full max-w-sm">
+        {/* Lock Icon */}
+        <div className="mb-8 flex justify-center">
+          <div className="flex h-20 w-20 items-center justify-center rounded-full bg-primary/10">
+            <Lock className="h-10 w-10 text-primary" />
+          </div>
+        </div>
+
+        <h1 className="mb-2 text-center text-2xl font-bold text-foreground">
+          Admin Access
+        </h1>
+        <p className="mb-8 text-center text-sm text-muted-foreground">
+          Enter your admin password to continue
+        </p>
+
+        <form onSubmit={handleSubmit} className="space-y-4">
+          {error && (
+            <div className="flex items-center gap-2 rounded-xl bg-destructive/10 p-3 text-sm text-destructive">
+              <ShieldAlert className="h-4 w-4 shrink-0" />
+              {error}
+            </div>
+          )}
+
+          <div className="relative">
+            <input
+              type={showPassword ? "text" : "password"}
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              placeholder="Admin Password"
+              className="h-12 w-full rounded-xl bg-card px-4 pr-12 text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary"
+              required
+              disabled={isLoading}
+            />
+            <button
+              type="button"
+              onClick={() => setShowPassword(!showPassword)}
+              className="absolute right-4 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+            >
+              {showPassword ? (
+                <EyeOff className="h-5 w-5" />
+              ) : (
+                <Eye className="h-5 w-5" />
+              )}
+            </button>
+          </div>
+
+          <button
+            type="submit"
+            disabled={isLoading || !password}
+            className={cn(
+              "w-full rounded-xl bg-primary py-3 font-semibold text-primary-foreground transition-colors",
+              "hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-50"
+            )}
+          >
+            {isLoading ? "Authenticating..." : "Access Admin Panel"}
+          </button>
+        </form>
+
+        <Link
+          href="/"
+          className="mt-6 flex items-center justify-center gap-2 text-sm text-muted-foreground hover:text-foreground"
+        >
+          <ArrowLeft className="h-4 w-4" />
+          Back to Dashboard
+        </Link>
+      </div>
+    </div>
+  );
+}
+
+// Access Denied Component
+function AccessDenied({ walletAddress }: { walletAddress?: string | null }) {
+  return (
+    <div className="flex min-h-screen flex-col items-center justify-center bg-background px-6">
+      <div className="w-full max-w-sm text-center">
+        <div className="mb-8 flex justify-center">
+          <div className="flex h-20 w-20 items-center justify-center rounded-full bg-destructive/10">
+            <ShieldAlert className="h-10 w-10 text-destructive" />
+          </div>
+        </div>
+
+        <h1 className="mb-2 text-2xl font-bold text-foreground">
+          Access Denied
+        </h1>
+        <p className="mb-4 text-sm text-muted-foreground">
+          Your wallet address is not authorized to access the admin panel.
+        </p>
+
+        {walletAddress && (
+          <div className="mb-6 rounded-xl bg-card p-4">
+            <p className="text-xs text-muted-foreground">Your wallet:</p>
+            <p className="mt-1 font-mono text-xs text-foreground break-all">
+              {walletAddress}
+            </p>
+          </div>
+        )}
+
+        <Link
+          href="/"
+          className={cn(
+            "inline-flex w-full items-center justify-center gap-2 rounded-xl bg-primary py-3 font-semibold text-primary-foreground transition-colors",
+            "hover:bg-primary/90"
+          )}
+        >
+          <ArrowLeft className="h-4 w-4" />
+          Back to Dashboard
+        </Link>
+      </div>
+    </div>
+  );
+}
+
 export default function AdminDashboard() {
+  const { isAuthenticated, walletAddress } = usePiSDK();
+  
+  const [isAdminAuthenticated, setIsAdminAuthenticated] = useState(false);
+  const [authError, setAuthError] = useState<string | null>(null);
+  const [isAuthenticating, setIsAuthenticating] = useState(false);
+  
   const [orders, setOrders] = useState<Order[]>(initialOrders);
-  const [isLoading, setIsLoading] = useState(true);
+  const [isLoading, setIsLoading] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [filterStatus, setFilterStatus] = useState<
     "all" | "pending" | "completed" | "failed"
@@ -185,10 +330,54 @@ export default function AdminDashboard() {
   const [copied, setCopied] = useState<string | null>(null);
   const [showFilters, setShowFilters] = useState(false);
 
-  useEffect(() => {
-    // Simulate loading
-    setTimeout(() => setIsLoading(false), 1000);
-  }, []);
+  // Check if user's wallet matches admin wallet
+  const isAdminWallet = walletAddress === ADMIN_WALLET_ADDRESS;
+
+  // Handle admin login
+  const handleAdminLogin = async (password: string) => {
+    setIsAuthenticating(true);
+    setAuthError(null);
+
+    try {
+      const response = await fetch("/api/admin/auth", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ password, walletAddress }),
+      });
+
+      const data = await response.json();
+
+      if (response.ok && data.success) {
+        setIsAdminAuthenticated(true);
+        // Load orders after successful auth
+        setIsLoading(true);
+        setTimeout(() => setIsLoading(false), 1000);
+      } else {
+        setAuthError(data.error || "Authentication failed");
+      }
+    } catch (error) {
+      console.error("[Admin] Login error:", error);
+      setAuthError("Failed to authenticate. Please try again.");
+    } finally {
+      setIsAuthenticating(false);
+    }
+  };
+
+  // Show access denied if wallet doesn't match
+  if (!isAdminWallet) {
+    return <AccessDenied walletAddress={walletAddress} />;
+  }
+
+  // Show login screen if not admin authenticated
+  if (!isAdminAuthenticated) {
+    return (
+      <AdminLogin
+        onLogin={handleAdminLogin}
+        error={authError}
+        isLoading={isAuthenticating}
+      />
+    );
+  }
 
   // Filter orders
   const filteredOrders = orders.filter((order) => {
@@ -345,6 +534,10 @@ export default function AdminDashboard() {
     }
   };
 
+  // Pi Testnet BlockExplorer URL
+  const getExplorerUrl = (txid: string) =>
+    `https://blockexplorer.minepi.com/testnet/tx/${txid}`;
+
   return (
     <div className="min-h-screen bg-background">
       {/* Header */}
@@ -404,7 +597,6 @@ export default function AdminDashboard() {
           <StatsCard
             title="Total Pi Received"
             value={`${totalPi.toFixed(2)} Pi`}
-            subtitle="Test Mode"
             icon={Wallet}
             trend="+8%"
             trendUp={true}
@@ -654,11 +846,11 @@ export default function AdminDashboard() {
                             <Copy className="h-3.5 w-3.5 text-muted-foreground" />
                           </button>
                           <a
-                            href={`https://piblockexplorer.com/tx/${order.txid}`}
+                            href={getExplorerUrl(order.txid)}
                             target="_blank"
                             rel="noopener noreferrer"
                             className="flex h-8 w-8 items-center justify-center rounded-lg bg-secondary/50 transition-colors hover:bg-secondary"
-                            title="View on Explorer"
+                            title="View on Pi BlockExplorer"
                           >
                             <ExternalLink className="h-3.5 w-3.5 text-muted-foreground" />
                           </a>
@@ -749,7 +941,7 @@ export default function AdminDashboard() {
                     TXID
                   </button>
                   <a
-                    href={`https://piblockexplorer.com/tx/${order.txid}`}
+                    href={getExplorerUrl(order.txid)}
                     target="_blank"
                     rel="noopener noreferrer"
                     className="flex h-8 items-center gap-1 rounded-lg bg-primary px-3 text-xs text-primary-foreground"
@@ -766,7 +958,7 @@ export default function AdminDashboard() {
         {/* Footer */}
         <footer className="mt-8 text-center">
           <p className="text-xs text-muted-foreground">
-            Data Hub Admin Panel - Test Mode
+            Pivtu Admin Panel
           </p>
           <p className="mt-1 text-[10px] text-muted-foreground/70">
             Powered by{" "}

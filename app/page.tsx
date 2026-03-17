@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useCallback, useEffect } from "react";
-import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { Header } from "@/components/dashboard/header";
 import { WalletCard } from "@/components/dashboard/wallet-card";
 import {
@@ -19,9 +19,7 @@ import {
   type NotificationType,
 } from "@/components/dashboard/notification-toast";
 import { ConnectWallet } from "@/components/dashboard/connect-wallet";
-import { TransactionSuccess } from "@/components/dashboard/transaction-success";
-import { ProcessingOverlay } from "@/components/dashboard/processing-overlay";
-import { TransactionHistory } from "@/components/dashboard/transaction-history";
+import { TransactionStatusModal } from "@/components/dashboard/transaction-status-modal";
 import { usePiSDK } from "@/hooks/use-pi-sdk";
 import {
   History,
@@ -63,19 +61,19 @@ export interface Transaction {
 }
 
 export default function VTUDashboard() {
+  const router = useRouter();
+  
   // State
-  const [selectedNetwork, setSelectedNetwork] =
-    useState<NetworkProvider | null>(null);
+  const [selectedNetwork, setSelectedNetwork] = useState<NetworkProvider | null>(null);
   const [phoneNumber, setPhoneNumber] = useState("");
   const [selectedPlan, setSelectedPlan] = useState<DataPlan | null>(null);
   const [notification, setNotification] = useState<Notification | null>(null);
   const [showNotification, setShowNotification] = useState(false);
-  const [showSuccessScreen, setShowSuccessScreen] = useState(false);
-  const [vtuDelivery, setVtuDelivery] = useState<VTUDeliveryData | null>(null);
+  const [showTransactionModal, setShowTransactionModal] = useState(false);
+  const [lastTxid, setLastTxid] = useState<string | undefined>();
   const [transactions, setTransactions] = useState<Transaction[]>([]);
-  const [showHistory, setShowHistory] = useState(false);
 
-  // Pi SDK - Following Pi Demo App pattern
+  // Pi SDK
   const {
     isSDKLoaded,
     isAuthenticated,
@@ -84,7 +82,6 @@ export default function VTUDashboard() {
     walletAddress,
     walletBalance,
     paymentStatus,
-    lastReceipt,
     incompletePayment,
     createPayment,
     authenticate,
@@ -159,7 +156,7 @@ export default function VTUDashboard() {
       showToast(
         "success",
         "Wallet Connected",
-        `Welcome, ${user?.username || "Pioneer"}! Your Pi wallet is now connected.`
+        `Welcome, ${user?.username || "Pioneer"}!`
       );
     } else {
       showToast(
@@ -226,7 +223,7 @@ export default function VTUDashboard() {
     }
   };
 
-  // Handle payment with real-time notifications
+  // Handle payment with real-time modal
   const handlePayment = async () => {
     if (!isFormValid || !selectedPlan || !selectedNetwork) return;
 
@@ -234,24 +231,18 @@ export default function VTUDashboard() {
     if (selectedPlan.price > displayBalance) {
       showToast(
         "error",
-        "Insufficient Pi Balance",
-        `You need ${selectedPlan.price.toFixed(2)} Pi but only have ${displayBalance.toFixed(2)} Pi. Please top up your wallet.`
+        "Insufficient Balance",
+        `You need ${selectedPlan.price.toFixed(2)} Pi but only have ${displayBalance.toFixed(2)} Pi.`
       );
       return;
     }
 
-    // Show pending notification
-    showToast(
-      "info",
-      "Processing Payment",
-      `Initiating ${selectedPlan.size} data purchase for ${phoneNumber}...`
-    );
+    // Show transaction modal
+    setShowTransactionModal(true);
 
     try {
-      // Create payment with PiRC-compliant metadata
       const memo = `Pivtu - ${selectedPlan.size} for ${phoneNumber} (${selectedNetwork.toUpperCase()})`;
 
-      // PiRC Service Payment metadata structure
       const result = await createPayment(selectedPlan.price, memo, {
         network_provider: selectedNetwork,
         phone_number: phoneNumber,
@@ -263,16 +254,10 @@ export default function VTUDashboard() {
       });
 
       if (result.success && result.paymentId && result.txid) {
-        // Show delivery notification
-        showToast(
-          "info",
-          "Delivering Data",
-          "Payment successful! Delivering your data bundle..."
-        );
+        setLastTxid(result.txid);
 
         // Call VTU API to deliver data
-        const delivery = await deliverData(result.paymentId, result.txid);
-        setVtuDelivery(delivery);
+        await deliverData(result.paymentId, result.txid);
 
         // Save transaction to history
         saveTransaction({
@@ -289,27 +274,19 @@ export default function VTUDashboard() {
         // Refresh wallet balance
         refreshWalletBalance();
 
-        // Show success notification
-        showToast(
-          "success",
-          "Transaction Complete",
-          `${selectedPlan.size} data has been delivered to ${phoneNumber}!`
-        );
-
-        // Show success screen
-        setShowSuccessScreen(true);
-
-        // Reset form
-        setSelectedNetwork(null);
-        setPhoneNumber("");
-        setSelectedPlan(null);
+        // Reset form after success
+        setTimeout(() => {
+          setSelectedNetwork(null);
+          setPhoneNumber("");
+          setSelectedPlan(null);
+        }, 1000);
       } else {
         // Handle specific error codes
         switch (result.errorCode) {
           case "INSUFFICIENT_BALANCE":
             showToast(
               "error",
-              "Insufficient Pi Balance",
+              "Insufficient Balance",
               "You don't have enough Pi to complete this transaction."
             );
             break;
@@ -321,11 +298,7 @@ export default function VTUDashboard() {
             );
             break;
           case "CANCELLED":
-            showToast(
-              "info",
-              "Payment Cancelled",
-              "You cancelled the payment. No Pi has been deducted."
-            );
+            // Modal will show cancelled state
             break;
           default:
             showToast(
@@ -334,31 +307,39 @@ export default function VTUDashboard() {
               result.error || "An error occurred. Please try again."
             );
         }
-        resetPaymentStatus();
       }
     } catch (error) {
       console.error("[Payment] Error:", error);
       showToast(
         "error",
         "Payment Error",
-        "An unexpected error occurred. Please try again later."
+        "An unexpected error occurred. Please try again."
       );
-      resetPaymentStatus();
     }
   };
 
-  // Handle success screen close
-  const handleSuccessDone = () => {
-    setShowSuccessScreen(false);
-    setVtuDelivery(null);
+  // Handle modal close
+  const handleModalClose = () => {
+    setShowTransactionModal(false);
+    setLastTxid(undefined);
     resetPaymentStatus();
   };
 
   // Refresh wallet
   const handleRefreshWallet = useCallback(() => {
     refreshWalletBalance();
-    showToast("info", "Refreshing Balance", "Fetching your latest Pi balance...");
+    showToast("info", "Refreshing", "Fetching your latest Pi balance...");
   }, [showToast, refreshWalletBalance]);
+
+  // Navigate to settings
+  const handleNavigateToSettings = () => {
+    router.push("/settings");
+  };
+
+  // Navigate to history
+  const handleNavigateToHistory = () => {
+    router.push("/settings");
+  };
 
   // Show wallet connection screen if not authenticated
   if (!isAuthenticated) {
@@ -380,34 +361,18 @@ export default function VTUDashboard() {
     );
   }
 
-  // Show success screen after payment
-  if (showSuccessScreen && lastReceipt) {
-    return (
-      <TransactionSuccess
-        receipt={lastReceipt}
-        vtuDelivery={vtuDelivery || undefined}
-        onDone={handleSuccessDone}
-      />
-    );
-  }
-
-  // Show transaction history
-  if (showHistory) {
-    return (
-      <TransactionHistory
-        transactions={transactions}
-        onBack={() => setShowHistory(false)}
-      />
-    );
-  }
-
   return (
     <div className="min-h-screen bg-background">
-      {/* Processing Overlay */}
-      <ProcessingOverlay
+      {/* Transaction Status Modal */}
+      <TransactionStatusModal
+        isOpen={showTransactionModal}
         status={paymentStatus}
         planSize={selectedPlan?.size}
         amount={selectedPlan?.price}
+        txid={lastTxid}
+        phoneNumber={phoneNumber}
+        networkProvider={selectedNetwork || undefined}
+        onClose={handleModalClose}
       />
 
       {/* Notification Toast */}
@@ -457,58 +422,44 @@ export default function VTUDashboard() {
           />
         </section>
 
-        {/* Quick Actions - Removed Admin button */}
+        {/* Quick Actions */}
         <section className="mt-6 grid grid-cols-4 gap-3">
-          {[
-            {
-              icon: History,
-              label: "History",
-              color: "text-primary",
-              onClick: () => setShowHistory(true),
-            },
-            {
-              icon: HelpCircle,
-              label: "Support",
-              color: "text-[#F59E0B]",
-              href: "#",
-            },
-            {
-              icon: Shield,
-              label: "Security",
-              color: "text-success",
-              href: "/settings",
-            },
-            {
-              icon: Settings,
-              label: "Settings",
-              color: "text-muted-foreground",
-              href: "/settings",
-            },
-          ].map(({ icon: Icon, label, color, href, onClick }) =>
-            href && href !== "#" ? (
-              <Link
-                key={label}
-                href={href}
-                className="flex flex-col items-center gap-2 rounded-xl bg-card p-3 transition-all hover:bg-secondary active:scale-95"
-              >
-                <Icon className={`h-5 w-5 ${color}`} />
-                <span className="text-[10px] font-medium text-muted-foreground">
-                  {label}
-                </span>
-              </Link>
-            ) : (
-              <button
-                key={label}
-                onClick={onClick}
-                className="flex flex-col items-center gap-2 rounded-xl bg-card p-3 transition-all hover:bg-secondary active:scale-95"
-              >
-                <Icon className={`h-5 w-5 ${color}`} />
-                <span className="text-[10px] font-medium text-muted-foreground">
-                  {label}
-                </span>
-              </button>
-            )
-          )}
+          <button
+            onClick={handleNavigateToHistory}
+            className="flex flex-col items-center gap-2 rounded-xl bg-card p-3 transition-all hover:bg-secondary active:scale-95"
+          >
+            <History className="h-5 w-5 text-primary" />
+            <span className="text-[10px] font-medium text-muted-foreground">
+              History
+            </span>
+          </button>
+          <button
+            onClick={() => showToast("info", "Support", "Contact us at support@pivtu.com")}
+            className="flex flex-col items-center gap-2 rounded-xl bg-card p-3 transition-all hover:bg-secondary active:scale-95"
+          >
+            <HelpCircle className="h-5 w-5 text-[#F59E0B]" />
+            <span className="text-[10px] font-medium text-muted-foreground">
+              Support
+            </span>
+          </button>
+          <button
+            onClick={handleNavigateToSettings}
+            className="flex flex-col items-center gap-2 rounded-xl bg-card p-3 transition-all hover:bg-secondary active:scale-95"
+          >
+            <Shield className="h-5 w-5 text-success" />
+            <span className="text-[10px] font-medium text-muted-foreground">
+              Security
+            </span>
+          </button>
+          <button
+            onClick={handleNavigateToSettings}
+            className="flex flex-col items-center gap-2 rounded-xl bg-card p-3 transition-all hover:bg-secondary active:scale-95"
+          >
+            <Settings className="h-5 w-5 text-muted-foreground" />
+            <span className="text-[10px] font-medium text-muted-foreground">
+              Settings
+            </span>
+          </button>
         </section>
 
         {/* Quick Recharge Form */}
@@ -575,11 +526,11 @@ export default function VTUDashboard() {
             onClick={handlePayment}
           />
 
-          {/* KYC Notice */}
+          {/* Security Notice */}
           <div className="mt-4 flex items-center justify-center gap-2 rounded-xl bg-success/10 px-4 py-3">
             <Shield className="h-4 w-4 shrink-0 text-success" />
             <p className="text-xs text-success">
-              Verified by Pi Network KYC. No additional registration required.
+              Secured by Pi Network. Your transactions are safe.
             </p>
           </div>
 
@@ -598,15 +549,6 @@ export default function VTUDashboard() {
             Powered by{" "}
             <span className="font-semibold text-primary">Pi Network</span>
           </p>
-          <div className="mt-2 flex items-center justify-center gap-4 text-[10px] text-muted-foreground/70">
-            <Link href="/privacy" className="hover:text-primary">
-              Privacy Policy
-            </Link>
-            <span>|</span>
-            <Link href="/terms" className="hover:text-primary">
-              Terms of Service
-            </Link>
-          </div>
         </footer>
       </main>
     </div>

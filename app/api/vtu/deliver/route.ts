@@ -2,8 +2,8 @@ import { NextResponse } from "next/server";
 import { requireAuth } from "@/lib/auth-middleware";
 
 // ============================================================================
-// VTU API - PiRC Service Payment Compliance
-// Simulates VTU data delivery with PiRC-aligned response structure
+// VTU API - Production-Ready Structure
+// Replace the placeholder VTU_API calls with your actual VTU provider
 // ============================================================================
 
 export interface VTUDeliveryRequest {
@@ -22,8 +22,6 @@ export interface VTUDeliveryResponse {
   network: string;
   data_plan: string;
   phone_number: string;
-  test_naira_balance: string;
-  mock_token_delivery_id: string;
   timestamp: string;
   pi_transaction: {
     payment_id: string;
@@ -31,27 +29,95 @@ export interface VTUDeliveryResponse {
     amount: number;
     explorer_link: string;
   };
-  // PiRC-compliant metadata
-  pirc_metadata: {
-    service_type: "data_bundle";
-    provider_code: string;
-    recipient_identifier: string;
-    service_description: string;
-    fulfillment_status: "completed" | "pending" | "failed";
-    processing_time_ms: number;
+  vtu_response?: {
+    reference: string;
+    status: string;
+    message: string;
   };
 }
 
-// Mock naira balance (simulating business wallet)
-let mockNairaBalance = 10000;
-
-// Data plan prices in mock naira
+// Data plan prices in Naira (adjust based on your VTU provider)
 const dataPlanPricesNaira: Record<string, number> = {
   "500mb": 150,
   "1gb": 250,
   "2gb": 450,
   "5gb": 1000,
 };
+
+// Network provider codes for VTU API
+const networkCodes: Record<string, string> = {
+  mtn: "MTN",
+  airtel: "AIRTEL",
+  glo: "GLO",
+  "9mobile": "9MOBILE",
+};
+
+/**
+ * Call your actual VTU provider API here
+ * Replace this placeholder with your VTU provider integration
+ * 
+ * Example providers:
+ * - VTPass (vtpass.com)
+ * - AirtimePlug
+ * - Gsubz
+ * - Baxi (baxi.ng)
+ * - ReloadlyCommerce
+ */
+async function callVTUProvider(
+  networkProvider: string,
+  phoneNumber: string,
+  dataPlanId: string,
+  _dataPlanSize: string
+): Promise<{
+  success: boolean;
+  reference?: string;
+  message: string;
+}> {
+  // ============================================================================
+  // PLACEHOLDER: Replace with actual VTU API call
+  // ============================================================================
+  // 
+  // Example VTPass integration:
+  // const response = await fetch('https://vtpass.com/api/pay', {
+  //   method: 'POST',
+  //   headers: {
+  //     'Content-Type': 'application/json',
+  //     'api-key': process.env.VTPASS_API_KEY,
+  //     'secret-key': process.env.VTPASS_SECRET_KEY,
+  //   },
+  //   body: JSON.stringify({
+  //     request_id: `pivtu_${Date.now()}`,
+  //     serviceID: `${networkProvider.toLowerCase()}-data`,
+  //     billersCode: phoneNumber,
+  //     variation_code: dataPlanId,
+  //     amount: dataPlanPricesNaira[dataPlanId],
+  //     phone: phoneNumber,
+  //   }),
+  // });
+  // 
+  // const data = await response.json();
+  // return {
+  //   success: data.code === '000',
+  //   reference: data.requestId,
+  //   message: data.response_description,
+  // };
+  // ============================================================================
+
+  // Simulate VTU API response for testing
+  const processingTime = 1000 + Math.random() * 1000;
+  await new Promise((resolve) => setTimeout(resolve, processingTime));
+
+  const reference = `VTU_${Date.now()}_${Math.random().toString(36).substring(2, 8).toUpperCase()}`;
+  
+  console.log(`[VTU] Processing ${_dataPlanSize} data for ${phoneNumber} on ${networkProvider}`);
+  console.log(`[VTU] Plan ID: ${dataPlanId}, Naira Cost: ${dataPlanPricesNaira[dataPlanId] || 200}`);
+
+  return {
+    success: true,
+    reference,
+    message: `Data bundle delivered to ${phoneNumber}`,
+  };
+}
 
 export async function POST(request: Request) {
   // Check authentication
@@ -71,33 +137,47 @@ export async function POST(request: Request) {
       amount_pi,
     } = body;
 
-    // Simulate processing delay (1-2 seconds)
-    const processingStart = Date.now();
-    await new Promise((resolve) =>
-      setTimeout(resolve, 1000 + Math.random() * 1000)
+    // Validate required fields
+    if (!payment_id || !txid || !network_provider || !phone_number || !data_plan_id) {
+      return NextResponse.json(
+        { status: "failed", error: "Missing required fields" },
+        { status: 400 }
+      );
+    }
+
+    // Validate network provider
+    const normalizedNetwork = network_provider.toLowerCase();
+    if (!networkCodes[normalizedNetwork]) {
+      return NextResponse.json(
+        { status: "failed", error: "Invalid network provider" },
+        { status: 400 }
+      );
+    }
+
+    // Call VTU provider
+    const vtuResult = await callVTUProvider(
+      normalizedNetwork,
+      phone_number,
+      data_plan_id,
+      data_plan_size
     );
-    const processingTime = Date.now() - processingStart;
 
-    // Generate delivery ID
-    const deliveryId = `VTU_${Date.now()}_${Math.random()
-      .toString(36)
-      .substring(2, 8)
-      .toUpperCase()}`;
-    const mockTokenDeliveryId = `TKN_${network_provider.toUpperCase()}_${Date.now()}`;
+    if (!vtuResult.success) {
+      console.error("[VTU] Delivery failed:", vtuResult.message);
+      return NextResponse.json({
+        status: "failed",
+        error: vtuResult.message,
+        timestamp: new Date().toISOString(),
+      });
+    }
 
-    // Calculate naira cost
-    const nairaCost = dataPlanPricesNaira[data_plan_id] || 200;
-    mockNairaBalance -= nairaCost;
-
-    // Build PiRC-compliant response
+    // Build response
     const response: VTUDeliveryResponse = {
       status: "success",
-      delivery_id: deliveryId,
-      network: network_provider.toUpperCase(),
+      delivery_id: vtuResult.reference || `VTU_${Date.now()}`,
+      network: networkCodes[normalizedNetwork],
       data_plan: data_plan_size,
       phone_number: phone_number,
-      test_naira_balance: mockNairaBalance.toFixed(2),
-      mock_token_delivery_id: mockTokenDeliveryId,
       timestamp: new Date().toISOString(),
       pi_transaction: {
         payment_id,
@@ -105,21 +185,24 @@ export async function POST(request: Request) {
         amount: amount_pi,
         explorer_link: `https://blockexplorer.minepi.com/testnet/tx/${txid}`,
       },
-      // PiRC Service Payment Metadata
-      pirc_metadata: {
-        service_type: "data_bundle",
-        provider_code: network_provider.toUpperCase(),
-        recipient_identifier: phone_number,
-        service_description: `${data_plan_size} Data Bundle - ${network_provider.toUpperCase()}`,
-        fulfillment_status: "completed",
-        processing_time_ms: processingTime,
+      vtu_response: {
+        reference: vtuResult.reference || "",
+        status: "delivered",
+        message: vtuResult.message,
       },
     };
 
-    console.log("[Mock VTU] Data delivered:", response);
-    return NextResponse.json(response);
+    // For backwards compatibility with existing code
+    const legacyResponse = {
+      ...response,
+      mock_token_delivery_id: vtuResult.reference,
+      test_naira_balance: "N/A", // No longer tracking mock balance
+    };
+
+    console.log("[VTU] Data delivered:", response.delivery_id);
+    return NextResponse.json(legacyResponse);
   } catch (error) {
-    console.error("[Mock VTU] Delivery error:", error);
+    console.error("[VTU] Delivery error:", error);
     return NextResponse.json(
       {
         status: "failed",
@@ -131,11 +214,12 @@ export async function POST(request: Request) {
   }
 }
 
-// GET endpoint to check mock balance
+// GET endpoint - Health check
 export async function GET() {
   return NextResponse.json({
-    test_naira_balance: mockNairaBalance.toFixed(2),
-    currency: "NGN (Mock)",
-    last_updated: new Date().toISOString(),
+    status: "ok",
+    message: "VTU API endpoint is available",
+    supported_networks: Object.keys(networkCodes),
+    timestamp: new Date().toISOString(),
   });
 }
